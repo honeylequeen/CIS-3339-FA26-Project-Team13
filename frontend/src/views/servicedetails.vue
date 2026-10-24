@@ -5,7 +5,12 @@
     <h1 class="font-bold text-4xl text-red-700 tracking-widest text-center mt-10">
       Service Details
     </h1>
+    <p v-if="!isEditor" class="text-center text-gray-500 mt-2">View only. Only editors can make changes.</p>
+    <div v-if="loadError" class="px-10 mt-10">
+      <ErrorState title="Couldn't load this service" :message="loadError" @retry="loadData" />
+    </div>
     <div class="px-10 py-20">
+      <fieldset :disabled="!isEditor">
         <!-- grid container -->
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-10">
           <h2 class="text-2xl font-bold">Service Details</h2>
@@ -55,14 +60,16 @@
           </div>
         </div>
 
-        <!-- grid container -->
+        </fieldset>
+
+      <!-- grid container -->
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-10">
           <div></div>
           <!-- Update Service button -->
           <div class="flex justify-between mt-10 mr-20">
             <div class="flex justify-between mt-10 mr-25">
               <button @click="submitServiceUpdate" type="submit" class="bg-green-700 disabled:opacity-50 text-white rounded"
-                :disabled="user.role === 'viewer'">
+                v-if="isEditor">
                 Update Service
               </button>
             </div>
@@ -70,13 +77,13 @@
           <!--Delete Service button-->
           <div class="flex justify-between mt-20 mr-20">
             <button @click="submitDeleteService" type="submit" class="bg-red-700 disabled:opacity-50 text-white rounded"
-              :disabled="user.role === 'viewer'">
+              v-if="isEditor">
               Delete Service
             </button>
           </div>
           <!--Go back button-->
           <div class="flex justify-between mt-20 mr-20">
-            <button type="reset" class="border border-red-700 bg-white text-red-700 rounded" @click="this.$router.back()">
+            <button type="reset" class="border border-red-700 bg-white text-red-700 rounded" @click="router.back()">
               Go back
             </button>
           </div>
@@ -116,104 +123,82 @@
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import useVuelidate from '@vuelidate/core'
 import { required } from '@vuelidate/validators'
-import { useLoggedInUserStore } from "../store/loggedInUser";
-import { getServiceById, getEventsByServiceId, updateService, deleteService } from '../api/api'
 import { useToast } from 'vue-toastification'
+import { useLoggedInUserStore } from '../store/loggedInUser'
+import ErrorState from '../components/ErrorState.vue'
+import { getServiceById, getEventsByServiceId, updateService, deleteService } from '../api/api'
+import { formatDate, responseMessage } from '../utils/format'
 
-//Notifications
+const route = useRoute()
+const router = useRouter()
 const toast = useToast()
+const user = useLoggedInUserStore()
 
-export default {
-  data() {
-    return {
-      //variable to store service information
-      service: {
-        name: null,
-        description: null,
-        status: null
-      },
-      // all events that host the service
-      events: [],
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  setup() {
-    // register Vuelidate and loggedIn store
-    const v$ = useVuelidate();
-    const user = useLoggedInUserStore();
-    return { v$, user };
-  },
-  validations() {
-    // validations      
-    return {
-      service: {
-        name: { required },
-      },
-    };
-  },
-  async mounted() {
-    // when component is mounted, data is loaded
-    try {
-      const [serviceResponse, eventsResponse] = await Promise.all([
-        getServiceById(this.$route.params.id),
-        getEventsByServiceId(this.$route.params.id),
-      ]);
+// Only editors can change data. Viewers see a read-only page.
+const isEditor = computed(() => user.role === 'editor')
 
-      this.service = serviceResponse;
-      this.events = eventsResponse;
+const service = ref({ name: null, description: null, status: null })
+// Events that offer this service
+const events = ref([])
+// ID of the table row the mouse is over (for highlighting)
+const hoverId = ref(null)
+// Message shown if the page couldn't load (e.g. 404 Not Found)
+const loadError = ref(null)
 
-    } catch (error) {
-      toast.error(error);
-    }
-  },
-  methods: {
-    // method to format the event dates
-    formatDate(date) {
-      const isoDate = new Date(date);
-      const year = isoDate.getUTCFullYear();
-      const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getUTCDate()).padStart(2, '0');
-      return `${month}/${day}/${year}`;
-    },
-
-    // method called when user attempts to update the service
-    async submitServiceUpdate() {
-      // Trigger validation
-      this.v$.$validate();
-
-      if (this.v$.$error) {
-        // Form is invalid, do not proceed
-        return;
-      }
-
-      try {
-        const response = await updateService(this.$route.params.id, this.service);
-        this.$router.push('/findservice')
-        toast.success(response)
-      } catch (error) {
-        toast.error('error updating service', error)
-      }
-    },
-
-    // method to make the API call to delete the service - can only be deleted service is not used in any event
-    async submitDeleteService() {
-      try {
-        if (this.events.length != 0)
-        {
-          toast.info('Service can not be deleted since it is being used by events.')
-          return
-        }
-        const response = await deleteService(this.$route.params.id);
-        toast.success(response)
-        this.$router.push('/findservice')
-      } catch (error) {
-        toast.error(error)
-      }
-    },
+const rules = {
+  service: {
+    name: { required }
   }
 }
+const v$ = useVuelidate(rules, { service })
+
+async function loadData() {
+  loadError.value = null
+  try {
+    const [serviceResponse, eventsResponse] = await Promise.all([
+      getServiceById(route.params.id),
+      getEventsByServiceId(route.params.id)
+    ])
+    service.value = serviceResponse
+    events.value = eventsResponse
+  } catch (error) {
+    loadError.value = error.message
+  }
+}
+
+// Save changes to the service
+async function submitServiceUpdate() {
+  const isValid = await v$.value.$validate()
+  if (!isValid) return
+
+  try {
+    const response = await updateService(route.params.id, service.value)
+    toast.success(responseMessage(response, 'Service updated'))
+    router.push('/findservice')
+  } catch (error) {
+    toast.error(error.message)
+  }
+}
+
+// Delete the service. It can only be deleted if no event uses it.
+async function submitDeleteService() {
+  if (events.value.length !== 0) {
+    toast.info('Service can not be deleted since it is being used by events.')
+    return
+  }
+  try {
+    const response = await deleteService(route.params.id)
+    toast.success(responseMessage(response, 'Service deleted'))
+    router.push('/findservice')
+  } catch (error) {
+    toast.error(error.message)
+  }
+}
+
+onMounted(loadData)
 </script>
