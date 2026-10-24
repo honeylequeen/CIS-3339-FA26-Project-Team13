@@ -49,11 +49,11 @@
         <div></div>
         <!--Clear Search button-->
         <div class="mt-5 grid-cols-2">
-          <button class="mr-10 border border-red-700 bg-white text-red-700 rounded" @click="loadData" type="submit">
+          <button class="mr-10 border border-red-700 bg-white text-red-700 rounded" @click="loadData" type="button">
             Clear Search
           </button>
           <!--Search Client button-->
-          <button class="bg-red-700 text-white rounded" @click="handleSubmitForm" type="submit">
+          <button class="bg-red-700 text-white rounded" @click="handleSubmitForm" type="button">
             Search Client
           </button>
         </div>
@@ -66,110 +66,82 @@
         <h2 class="text-2xl font-bold">List of Clients</h2>
         <h3 class="italic">Click table row to view client details</h3>
       </div>
-      <!--Table showing list of Clients-->
-      <div class="flex flex-col col-span-2">
-        <table class="min-w-full shadow-md rounded">
-          <thead class="bg-gray-50 text-xl">
-            <tr>
-              <th class="p-4 text-left">Name</th>
-              <th class="p-4 text-left">Phone number</th>
-              <th class="p-4 text-left">City</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-300">
-            <tr @click="$router.push({ name: 'clientdetails', params: { id: client._id } })" v-for="client in clients"
-              :key="client._id" class="cursor-pointer" :class="{ 'hoverRow': hoverId === client._id }"
-              @mouseenter="hoverId = client._id" @mouseleave="hoverId = null">
-              <td class="p-2 text-left">
-                {{ client.firstName + ' ' + client.lastName }}
-              </td>
-              <td class="p-2 text-left">
-                {{ client.phoneNumber.primary }}
-              </td>
-              <td class="p-2 text-left">{{ client.address.city }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <!--List of Clients: loading, error, or the table (which shows "No results" when empty)-->
+      <div class="flex flex-col col-span-2 mb-10">
+        <LoadingState v-if="loading" text="Loading clients…" />
+        <ErrorState v-else-if="error" title="Couldn't load clients" :message="error" @retry="execute" />
+        <DataTable
+          v-else
+          :columns="columns"
+          :rows="clients || []"
+          :empty-text="activeQuery ? 'No clients match your search.' : 'No clients have been added yet.'"
+          @row-click="openClient"
+        />
       </div>
     </div>
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import DataTable from '../components/DataTable.vue'
+import LoadingState from '../components/LoadingState.vue'
+import ErrorState from '../components/ErrorState.vue'
+import { useApi } from '../composables/useApi'
 import { getClients, searchClients } from '../api/api'
-import { useToast } from 'vue-toastification'
 
-//Notifications
-const toast = useToast()
+const router = useRouter()
 
-export default {
-  data() {
-    return {
-      //variable to store all clients and their information for the organization
-      clients: null,
-      // Parameters for search to occur
-      searchBy: '',
-      firstName: '',
-      lastName: '',
-      phoneNumber: '',
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  mounted() {
-    // when component is mounted, load the data -
-    this.loadData()
-  },
-  methods: {
-    // method called when component is mounted
-    async loadData() {
-      // Resets all the variables
-      this.searchBy = ''
-      this.firstName = ''
-      this.lastName = ''
-      this.phoneNumber = ''
+// Search fields
+const searchBy = ref('')
+const firstName = ref('')
+const lastName = ref('')
+const phoneNumber = ref('')
 
-      // get list of clients
-      try {
-        const response = await getClients();
-        this.clients = response;
-      } catch (error) {
-        toast.error(error)
-      }
-    },
-    // method called when user searches for clients
-    async handleSubmitForm() {
-      // if user searched by client name
-      if (this.searchBy === 'Client Name') {
-        if (this.firstName || this.lastName) {
-          try {
-            const query = {
-              searchBy: 'name',
-              firstName: this.firstName,
-              lastName: this.lastName,
-            }
-            const response = await searchClients(query)
-            this.clients = response;
-          } catch (error) {
-            toast.error(error)
-          }
-        }
-        // if user searches by client phone number
-      } else if (this.searchBy === 'Client Number') {
-        if (this.phoneNumber) {
-          try {
-            const query = {
-              searchBy: 'number',
-              phoneNumber: this.phoneNumber
-            }
-            const response = await searchClients(query)
-            this.clients = response;
-          } catch (error) {
-            toast.error(error)
-          }
-        }
-      }
-    },
-  },
+// null = show all clients, otherwise the search query that was last submitted
+const activeQuery = ref(null)
+
+// One useApi call that either lists all clients or runs the active search
+const {
+  data: clients,
+  loading,
+  error,
+  execute
+} = useApi(() => (activeQuery.value ? searchClients(activeQuery.value) : getClients()))
+
+// Columns for the shared DataTable
+const columns = [
+  { label: 'Name', field: 'lastName', render: (client) => `${client.firstName} ${client.lastName}` },
+  { label: 'Phone number', field: 'phoneNumber.primary' },
+  { label: 'City', field: 'address.city' }
+]
+
+// Clear the search and load every client (also runs when the page opens)
+function loadData() {
+  searchBy.value = ''
+  firstName.value = ''
+  lastName.value = ''
+  phoneNumber.value = ''
+  activeQuery.value = null
+  execute()
 }
+
+// Runs the search the user typed in
+function handleSubmitForm() {
+  if (searchBy.value === 'Client Name' && (firstName.value || lastName.value)) {
+    activeQuery.value = { searchBy: 'name', firstName: firstName.value, lastName: lastName.value }
+    execute()
+  } else if (searchBy.value === 'Client Number' && phoneNumber.value) {
+    activeQuery.value = { searchBy: 'number', phoneNumber: phoneNumber.value }
+    execute()
+  }
+}
+
+function openClient(client) {
+  router.push({ name: 'clientdetails', params: { id: client._id } })
+}
+
+// Load the full list when the page opens
+onMounted(loadData)
 </script>

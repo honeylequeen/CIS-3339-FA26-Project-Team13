@@ -41,11 +41,11 @@
         <div></div>
         <div class="mt-5 grid-cols-2">
           <!--Clear Search button-->
-          <button class="mr-10 border border-red-700 bg-white text-red-700 rounded" @click="loadData" type="submit">
+          <button class="mr-10 border border-red-700 bg-white text-red-700 rounded" @click="loadData" type="button">
             Clear Search
           </button>
           <!--Search Service button-->
-          <button class="bg-red-700 text-white rounded" @click="handleSubmitForm" type="submit">
+          <button class="bg-red-700 text-white rounded" @click="handleSubmitForm" type="button">
             Search Service
           </button>
         </div>
@@ -55,107 +55,82 @@
     <hr class="mt-10 mb-10" />
     <!-- Display Found Data -->
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-10">
-      <!--List of Services table-->
       <div class="ml-10">
         <h2 class="text-2xl font-bold">List of Services</h2>
         <h3 class="italic">Click table row to view service details</h3>
       </div>
-      <div class="flex flex-col col-span-2">
-        <table class="min-w-full shadow-md rounded">
-          <thead class="bg-gray-50 text-xl">
-            <tr>
-              <th class="p-4 text-left" style="width: 25%;">Service Name</th>
-              <th class="p-4 text-left" style="width: 75%;">Service Description</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-300">
-            <tr @click="$router.push({name: 'servicedetails', params: { id: service._id } })" 
-            v-for="service in services" :key="service._id" class="cursor-pointer"
-              :class="{ 'hoverRow': hoverId === service._id }" @mouseenter="hoverId = service._id"
-              @mouseleave="hoverId = null">
-              <td class="p-4 text-left">{{ service.name }}</td>
-              <td class="p-4 text-left text-sm">{{ service.description }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <!--List of Services: loading, error, or the table (which shows "No results" when empty)-->
+      <div class="flex flex-col col-span-2 mb-10">
+        <LoadingState v-if="loading" text="Loading services…" />
+        <ErrorState v-else-if="error" title="Couldn't load services" :message="error" @retry="execute" />
+        <DataTable
+          v-else
+          :columns="columns"
+          :rows="services || []"
+          :empty-text="activeQuery ? 'No services match your search.' : 'No services have been created yet.'"
+          @row-click="openService"
+        />
       </div>
     </div>
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import DataTable from '../components/DataTable.vue'
+import LoadingState from '../components/LoadingState.vue'
+import ErrorState from '../components/ErrorState.vue'
+import { useApi } from '../composables/useApi'
 import { getServices, searchServices } from '../api/api'
-import { useToast } from 'vue-toastification'
 
-//Notifications
-const toast = useToast()
+const router = useRouter()
 
-export default {
-  data() {
-    return {
-      //variable to hold the services for the organization
-      services: null,
-      // Parameters for search to occur
-      searchBy: null,
-      name: null,
-      description: null,
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  mounted() {
-    // when component is mounted, load the data
-    this.loadData();
-  },
-  methods: {
-    // method called when component is mounted
-    async loadData() {
-      // Resets all the variables
-      this.searchBy = ''
-      this.name = ''
-      this.description = ''
+// Search fields
+const searchBy = ref('')
+const name = ref('')
+const description = ref('')
 
-      // get list of services
-      try {
-        const response = await getServices();
-        this.services = response;
-      } catch (error) {
-        toast.error(error)
-      }
-    },
+// null = show all services, otherwise the search query that was last submitted
+const activeQuery = ref(null)
 
-    // method called when user searches for a service
-    async handleSubmitForm() {
-      // if user searches by service name
-      if (this.searchBy === 'Service Name') {
-        if (this.name) {
-          try {
-            const query = {
-              searchBy: 'name',
-              name: this.name
-            }
-            const response = await searchServices(query)
-            this.services = response;
-          } catch (error) {
-            toast.error(error)
-          }
-        }
-        // if user searches by service description
-      } else if (this.searchBy === 'Service Description') {
-        if (this.description) {
-          try {
-            const query = {
-              searchBy: 'description',
-              description: this.description
-            }
-            const response = await searchServices(query)
-            this.services = response;
-          } catch (error) {
-            toast.error('Error searching services:', error)
-          }
-        }
-      }
-    },
-  },
+const {
+  data: services,
+  loading,
+  error,
+  execute
+} = useApi(() => (activeQuery.value ? searchServices(activeQuery.value) : getServices()))
+
+// Columns for the shared DataTable
+const columns = [
+  { label: 'Service Name', field: 'name', headerClass: 'w-1/4', cellClass: 'p-4' },
+  { label: 'Service Description', field: 'description', headerClass: 'w-3/4', cellClass: 'p-4 text-sm' }
+]
+
+// Clear the search and load every service (also runs when the page opens)
+function loadData() {
+  searchBy.value = ''
+  name.value = ''
+  description.value = ''
+  activeQuery.value = null
+  execute()
 }
+
+// Runs the search the user typed in
+function handleSubmitForm() {
+  if (searchBy.value === 'Service Name' && name.value) {
+    activeQuery.value = { searchBy: 'name', name: name.value }
+    execute()
+  } else if (searchBy.value === 'Service Description' && description.value) {
+    activeQuery.value = { searchBy: 'description', description: description.value }
+    execute()
+  }
+}
+
+function openService(service) {
+  router.push({ name: 'servicedetails', params: { id: service._id } })
+}
+
+// Load the full list when the page opens
+onMounted(loadData)
 </script>

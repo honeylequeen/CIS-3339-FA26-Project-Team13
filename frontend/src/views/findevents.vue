@@ -39,11 +39,11 @@
         <div></div>
         <!--Clear Search button-->
         <div class="mt-5 grid-cols-2">
-          <button class="mr-10 border border-red-700 bg-white text-red-700 rounded" @click="loadData" type="submit">
+          <button class="mr-10 border border-red-700 bg-white text-red-700 rounded" @click="loadData" type="button">
             Clear Search
           </button>
           <!--Search Event button-->
-          <button class="bg-red-700 text-white rounded" @click="handleSubmitForm" type="submit">
+          <button class="bg-red-700 text-white rounded" @click="handleSubmitForm" type="button">
             Search Event
           </button>
         </div>
@@ -53,122 +53,85 @@
     <hr class="mt-10 mb-10" />
     <!-- Display Found Data -->
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-10">
-      <!--Table showing List of Events-->
       <div class="ml-10">
         <h2 class="text-2xl font-bold">List of Events</h2>
         <h3 class="italic">Click table row to view event details</h3>
       </div>
-      <div class="flex flex-col col-span-2">
-        <table class="min-w-full shadow-md rounded">
-          <thead class="bg-gray-50 text-xl">
-            <tr>
-              <th class="p-4 text-left">Event Name</th>
-              <th class="p-4 text-left">Event Date</th>
-              <th class="p-4 text-left">Event Address</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-300">
-            <tr @click="$router.push({name: 'eventdetails', params: { id: event._id } })"
-              v-for="event in events" :key="event._id" class="cursor-pointer"
-              :class="{ 'hoverRow': hoverId === event._id }" @mouseenter="hoverId = event._id"
-              @mouseleave="hoverId = null">
-              <td class="p-2 text-left">{{ event.name }}</td>
-              <td class="p-2 text-left">{{ formatDate(event.date) }}</td>
-              <td class="p-2 text-left">{{ event.address.line1 }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <!--List of Events: loading, error, or the table (which shows "No results" when empty)-->
+      <div class="flex flex-col col-span-2 mb-10">
+        <LoadingState v-if="loading" text="Loading events…" />
+        <ErrorState v-else-if="error" title="Couldn't load events" :message="error" @retry="execute" />
+        <DataTable
+          v-else
+          :columns="columns"
+          :rows="events || []"
+          :empty-text="activeQuery ? 'No events match your search.' : 'No events have been created yet.'"
+          @row-click="openEvent"
+        />
       </div>
     </div>
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import DataTable from '../components/DataTable.vue'
+import LoadingState from '../components/LoadingState.vue'
+import ErrorState from '../components/ErrorState.vue'
+import { useApi } from '../composables/useApi'
 import { getEvents, searchEvents } from '../api/api'
-import { useToast } from 'vue-toastification'
+import { formatDate } from '../utils/format'
 
-//Notifications
-const toast = useToast()
+const router = useRouter()
 
-export default {
-  data() {
-    return {
-      //variable to hold all events for the organization
-      events: null,
-      // Parameters for search to occur
-      searchBy: null,
-      name: null,
-      eventDate: null,
-      // variable stores the ID of the row that the mouse is currently hovering over (to highlight the row red)
-      hoverId: null,
-    }
-  },
-  mounted() {
-    // when component is mounted, load the data
-    this.loadData();
-  },
-  methods: {
-    // method called when component is mounted
-    async loadData() {
-      // Resets variables used for search
-      this.searchBy = null
-      this.name = null
-      this.eventDate = null
+// Search fields
+const searchBy = ref(null)
+const name = ref(null)
+const eventDate = ref(null)
 
-      // show loading wheel
-      this.isLoading = true;
-      // get list of events
-      try {
-        const response = await getEvents();
-        this.events = response;
-      } catch (error) {
-        toast.error('loadData error', error)
-      }
-    },
+// null = show all events, otherwise the search query that was last submitted
+const activeQuery = ref(null)
 
-    // method called when user searches for an event
-    async handleSubmitForm() {
-      // if user searches by event name
-      if (this.searchBy === 'Event Name') {
-        if (this.name) {
-          try {
-            const query = {
-              searchBy: 'name',
-              name: this.name
-            };
-            const response = await searchEvents(query);
-            this.events = response;
-          } catch (error) {
-            toast.error('Error searching events', error)
-          }
-        }
-        // if user searches by event date
-      } else if (this.searchBy === 'Event Date') {
-        if (this.eventDate) {
-          try {
-            const eventDate = new Date(this.eventDate);
-            const formattedDate = eventDate.toISOString().substring(0, 10);
-            const query = {
-              searchBy: 'date',
-              eventDate: formattedDate
-            };
-            const response = await searchEvents(query);
-            this.events = response;
-          } catch (error) {
-            toast.error('Error searching events:', error)
-          }
-        }
-      }
-    },
+const {
+  data: events,
+  loading,
+  error,
+  execute
+} = useApi(() => (activeQuery.value ? searchEvents(activeQuery.value) : getEvents()))
 
-    // method called for each event date so it will be formatted correctly on the table
-    formatDate(date) {
-      const isoDate = new Date(date);
-      const year = isoDate.getUTCFullYear();
-      const month = String(isoDate.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getUTCDate()).padStart(2, '0');
-      return `${month}/${day}/${year}`;
-    },
-  },
+// Columns for the shared DataTable. Dates sort correctly because the raw value is an ISO date.
+const columns = [
+  { label: 'Event Name', field: 'name' },
+  { label: 'Event Date', field: 'date', render: (event) => formatDate(event.date) },
+  { label: 'Event Address', field: 'address.line1' }
+]
+
+// Clear the search and load every event (also runs when the page opens)
+function loadData() {
+  searchBy.value = null
+  name.value = null
+  eventDate.value = null
+  activeQuery.value = null
+  execute()
 }
+
+// Runs the search the user typed in
+function handleSubmitForm() {
+  if (searchBy.value === 'Event Name' && name.value) {
+    activeQuery.value = { searchBy: 'name', name: name.value }
+    execute()
+  } else if (searchBy.value === 'Event Date' && eventDate.value) {
+    const formattedDate = new Date(eventDate.value).toISOString().substring(0, 10)
+    activeQuery.value = { searchBy: 'date', eventDate: formattedDate }
+    execute()
+  }
+}
+
+function openEvent(event) {
+  router.push({ name: 'eventdetails', params: { id: event._id } })
+}
+
+// Load the full list when the page opens
+onMounted(loadData)
 </script>
