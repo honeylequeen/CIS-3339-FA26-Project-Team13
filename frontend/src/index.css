@@ -11,3 +11,12 @@ button {
   background-color: rgba(255, 0, 0, 0.1);
   transition: background-color 0.3s ease-in-out;
 }
+
+/* read-only forms for viewers (fieldset disabled on the details pages) */
+fieldset:disabled input,
+fieldset:disabled textarea,
+fieldset:disabled select {
+  background-color: #f9fafb;
+  color: #4b5563;
+  cursor: not-allowed;
+}

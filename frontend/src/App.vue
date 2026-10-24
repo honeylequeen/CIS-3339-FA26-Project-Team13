@@ -5,7 +5,7 @@
     <div id="_container" class="min-h-screen">
       <header class="w-full">
         <section class="text-center">
-          <img class="m-auto" src="@\assets\DanPersona.svg" />
+          <img class="m-auto" src="@/assets/DanPersona.svg" />
         </section>
         <!--Navigation bar-->
         <nav class="mt-10">
@@ -89,42 +89,23 @@
   </main>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
 import { useLoggedInUserStore } from './store/loggedInUser'
 import { getOrgName } from './api/api'
-import { useToast } from 'vue-toastification'
 
-//Notifications
-const toast = useToast()
+const user = useLoggedInUserStore()
 
-export default {
-  setup() {
-    const user = useLoggedInUserStore();
-    return { user };
-  },
-  data() {
-    return {
-      orgName: "Dataplatform",
-    };
-  },
-  async created() {
-    try {
-      this.orgName = await getOrgName();
-    } catch {
-      throw (error)
-    }
-  },
-  methods: {
-    logout() {
-      try {
-        this.$store.dispatch('clearSessionData');
-        this.$router.push('/')
-      } catch (error) {
-        toast.error('logout error', error)
-      }
-    },
+// Organization name shown in the header (falls back to "Dataplatform")
+const orgName = ref('Dataplatform')
+
+onMounted(async () => {
+  try {
+    orgName.value = await getOrgName()
+  } catch {
+    // Keep the default name if the org can't be loaded
   }
-}
+})
 </script>
 
 <style scoped>
