@@ -15,8 +15,8 @@ const routes = [
   {
     path: '/clientform',
     name: 'clientform',
-    // only authenticated users can create clients
-    meta: { requiresAuth: true },
+    // F4: only editors can create clients
+    meta: { requiresAuth: true, requiresEditor: true },
     component: () => import('../views/clientform.vue')
   },
   {
@@ -34,7 +34,8 @@ const routes = [
   {
     path: '/eventform',
     name: 'eventform',
-    meta: { requiresAuth: true },
+    // F4: editor-only page
+    meta: { requiresAuth: true, requiresEditor: true },
     component: () => import('../views/eventform.vue')
   },
   {
@@ -52,7 +53,8 @@ const routes = [
   {
     path: '/serviceform',
     name: 'serviceform',
-    meta: { requiresAuth: true },
+    // F4: editor-only page
+    meta: { requiresAuth: true, requiresEditor: true },
     component: () => import('../views/serviceform.vue')
   },
   {
@@ -82,6 +84,10 @@ router.beforeEach((to) => {
       // save the location we were at to come back later
       query: { redirect: to.fullPath },
     }
+  }
+  // F4: if a viewer types an editor-only URL, send them back to the dashboard
+  if (to.meta.requiresEditor && store.role !== 'editor') {
+    return { path: '/' }
   }
 })
 
