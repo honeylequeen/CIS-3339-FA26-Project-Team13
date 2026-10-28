@@ -7,6 +7,7 @@ import Toast from "vue-toastification";
 import "vue-toastification/dist/index.css";
 //state management library
 import { createPinia } from 'pinia'
+import { useLoggedInUserStore } from './store/loggedInUser'
 
 const app = createApp(App);
 
@@ -19,6 +20,11 @@ pinia.use(({ store }) => {
 
 //add pinia object to our instance
 app.use(pinia)
+
+// F4: restore the login before adding the router, because the router guard
+// checks isLoggedIn as soon as the router is added
+useLoggedInUserStore(pinia).restoreSession()
+
 app.use(router);
 
 const options = {
