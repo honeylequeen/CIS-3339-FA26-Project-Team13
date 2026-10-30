@@ -1,0 +1,4 @@
+# SPA fallback for Netlify (copied into dist/ by `npm run build`).
+# Any URL that isn't a real file (e.g. /clientdetails/123) is served index.html,
+# so Vue Router can show the right page instead of a 404 on refresh.
+/*    /index.html   200
