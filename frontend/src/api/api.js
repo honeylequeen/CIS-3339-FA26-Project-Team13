@@ -4,6 +4,12 @@
 // HTTP `status`, if there was one), so components never translate errors themselves.
 import axios from 'axios'
 
+// The backend URL comes from VITE_ROOT_API (frontend/.env locally, or the host's
+// environment variables when deployed). It is baked in when `npm run build` runs.
+if (!import.meta.env.VITE_ROOT_API) {
+  console.warn('VITE_ROOT_API is not set, so API calls will fail. See frontend/README.md.')
+}
+
 // Create HTTP client with the base URL, and specify that the data sent in the request body is JSON
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_ROOT_API,
